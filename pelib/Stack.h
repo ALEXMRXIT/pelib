@@ -7,6 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define USE_MEMORY_LEAK_DETECTED
+#include "Memory.h"
+
 #define MAX_PATH_LENGTH 128
 
 typedef struct StackNode {
@@ -45,6 +48,15 @@ char* stackPop(Stack* stack) {
     free(topNode->path);
     free(topNode);
     return path;
+}
+
+void stackClear(Stack* stack) {
+    while (stack->top != NULL) {
+        StackNode* topNode = stack->top;
+        stack->top = topNode->next;
+        free(topNode->path);
+        free(topNode);
+    }
 }
 
 #endif
