@@ -34,9 +34,9 @@ typedef struct _model {
 ALLOCATOR Model* load_obj(const char* filename);
 int save_model_binary(const char* filename, Model* model);
 void load_model(Model** models, LPQFileInfo* pLpqFileInfo, int countFiles);
-int compress_file(const char* input_file, const char* output_bhl, const char* output_lpq, int file_count);
-void save_model(Model* model);
-void debug_model(Model* model);
+int compress_file(const char* input_file, const char* output_bhl, const char* output_lpq, const char* file_name);
+void save_model(const Model* model);
+void debug_model(const Model* model);
 void delete_model(Model* model);
 
 #endif

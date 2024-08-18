@@ -19,17 +19,20 @@ int main(int argc, char* argv[]) {
     char* rootPath = getRootPath(argv[0]);
     char* corePath = addFolderToPath(rootPath, "gamedata");
 
-    const char* ignoreFile[] = { ".model", ".bhl", ".lpq" };
+    AnalizeTreeFiles(&engine->pLpqBuilder, corePath);
 
-    AnalizeTreeFiles(&engine->pLpqBuilder, corePath, ignoreFile, 3);
-
-    int count = engine->pLpqBuilder->modelCount;
+    int count = engine->pLpqBuilder->fileCount;
     for (int iterator = 0; iterator < count; ++iterator) {
-        Model* model = NULL;
-        load_model(&model, engine->pLpqBuilder[iterator].pLpqInfo, engine->pLpqBuilder->fileCount);
-        debug_model(model);
-        save_model(model);
-        delete_model(model);
+        switch (engine->pLpqBuilder->pLpqInfo[iterator].fileType)
+        {
+            case FT_MESH: {
+                Model* model = NULL;
+                load_model(&model, &engine->pLpqBuilder->pLpqInfo[iterator], engine->pLpqBuilder->pLpqInfo[iterator].countAdditionalyFiles);
+                debug_model(model);
+                save_model(model);
+                delete_model(model);
+            }
+        }
     }
 	
     int ch;

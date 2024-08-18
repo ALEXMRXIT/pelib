@@ -29,7 +29,6 @@ char* addFolderToPath(const char* rootPath, const char* folder) {
     strcat(newPath, "\\");
     strcat(newPath, folder);
 
-    free(rootPath);
     return newPath;
 }
 
