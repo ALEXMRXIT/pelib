@@ -1,11 +1,13 @@
 /*
 #include <windows.h>
 #include <d3d9.h>
+#include <d3dx9.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #pragma comment(lib, "d3d9.lib")
+#pragma comment(lib, "d3dx9.lib")
 
 // Предположим, что структура Model и функция load_obj уже определены
 
@@ -14,9 +16,10 @@ typedef struct {
     IDirect3DIndexBuffer9* indexBuffer;
     int vertexCount;
     int faceCount;
+    IDirect3DTexture9* texture;
 } RenderableModel;
 
-RenderableModel* CreateRenderableModel(IDirect3DDevice9* device, Model* model) {
+RenderableModel* CreateRenderableModel(IDirect3DDevice9* device, Model* model, const char* textureFile) {
     if (!device || !model) return NULL;
 
     RenderableModel* renderableModel = (RenderableModel*)malloc(sizeof(RenderableModel));
@@ -62,6 +65,13 @@ RenderableModel* CreateRenderableModel(IDirect3DDevice9* device, Model* model) {
     }
     renderableModel->indexBuffer->Unlock();
 
+    // Загрузка текстуры
+    if (FAILED(D3DXCreateTextureFromFile(device, textureFile, &renderableModel->texture))) {
+        MessageBox(NULL, "Failed to load texture", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        DestroyRenderableModel(renderableModel);
+        return NULL;
+    }
+
     return renderableModel;
 }
 
@@ -73,6 +83,9 @@ void RenderModel(IDirect3DDevice9* device, RenderableModel* renderableModel) {
     device->SetIndices(renderableModel->indexBuffer);
     device->SetFVF(D3DFVF_XYZ | D3DFVF_TEX1 | D3DFVF_NORMAL);
 
+    // Установка текстуры
+    device->SetTexture(0, renderableModel->texture);
+
     // Отрисовка модели
     device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, renderableModel->vertexCount, 0, renderableModel->faceCount);
 }
@@ -81,6 +94,7 @@ void DestroyRenderableModel(RenderableModel* renderableModel) {
     if (renderableModel) {
         if (renderableModel->vertexBuffer) renderableModel->vertexBuffer->Release();
         if (renderableModel->indexBuffer) renderableModel->indexBuffer->Release();
+        if (renderableModel->texture) renderableModel->texture->Release();
         free(renderableModel);
     }
 }
@@ -156,25 +170,56 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 0;
     }
 
-    // Загрузка модели
-    Model* model = load_obj("model.obj");
-    if (!model) {
-        MessageBox(NULL, "Failed to load model", "Error!", MB_ICONEXCLAMATION | MB_OK);
+    // Загрузка шейдера
+    ID3DXEffect* effect;
+    ID3DXBuffer* errorBuffer = NULL;
+    if (FAILED(D3DXCreateEffectFromFile(device, "shader.fx", NULL, NULL, 0, NULL, &effect, &errorBuffer))) {
+        if (errorBuffer) {
+            MessageBox(NULL, (char*)errorBuffer->GetBufferPointer(), "Shader Error", MB_OK);
+            errorBuffer->Release();
+        }
+        MessageBox(NULL, "Failed to create effect", "Error!", MB_ICONEXCLAMATION | MB_OK);
         device->Release();
         d3d->Release();
         return 0;
     }
 
-    // Создание рендеребл модели
-    RenderableModel* renderableModel = CreateRenderableModel(device, model);
-    if (!renderableModel) {
-        MessageBox(NULL, "Failed to create renderable model", "Error!", MB_ICONEXCLAMATION | MB_OK);
+    // Загрузка моделей
+    const char* modelFiles[] = { "model1.obj", "model2.obj", "model3.obj" };
+    const char* textureFiles[] = { "texture1.png", "texture2.png", "texture3.png" };
+    int modelCount = sizeof(modelFiles) / sizeof(modelFiles[0]);
+    RenderableModel** renderableModels = (RenderableModel**)malloc(modelCount * sizeof(RenderableModel*));
+
+    for (int i = 0; i < modelCount; i++) {
+        Model* model = load_obj(modelFiles[i]);
+        if (!model) {
+            MessageBox(NULL, "Failed to load model", "Error!", MB_ICONEXCLAMATION | MB_OK);
+            for (int j = 0; j < i; j++) {
+                DestroyRenderableModel(renderableModels[j]);
+            }
+            free(renderableModels);
+            effect->Release();
+            device->Release();
+            d3d->Release();
+            return 0;
+        }
+
+        renderableModels[i] = CreateRenderableModel(device, model, textureFiles[i]);
+        if (!renderableModels[i]) {
+            MessageBox(NULL, "Failed to create renderable model", "Error!", MB_ICONEXCLAMATION | MB_OK);
+            for (int j = 0; j < i; j++) {
+                DestroyRenderableModel(renderableModels[j]);
+            }
+            free(renderableModels);
+            effect->Release();
+            device->Release();
+            d3d->Release();
+            return 0;
+        }
+
         free(model->vertices);
         free(model->faces);
         free(model);
-        device->Release();
-        d3d->Release();
-        return 0;
     }
 
     // Основной цикл рендеринга
@@ -189,8 +234,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             device->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
             device->BeginScene();
 
-            // Отрисовка модели
-            RenderModel(device, renderableModel);
+            // Установка шейдера
+            effect->SetTechnique("DefaultTechnique");
+            UINT numPasses;
+            effect->Begin(&numPasses, 0);
+
+            for (UINT pass = 0; pass < numPasses; pass++) {
+                effect->BeginPass(pass);
+
+                // Отрисовка моделей
+                for (int i = 0; i < modelCount; i++) {
+                    RenderModel(device, renderableModels[i]);
+                }
+
+                effect->EndPass();
+            }
+            effect->End();
 
             device->EndScene();
             device->Present(NULL, NULL, NULL, NULL);
@@ -198,15 +257,57 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     // Освобождение ресурсов
-    DestroyRenderableModel(renderableModel);
-    free(model->vertices);
-    free(model->faces);
-    free(model);
+    for (int i = 0; i < modelCount; i++) {
+        DestroyRenderableModel(renderableModels[i]);
+    }
+    free(renderableModels);
+    effect->Release();
     device->Release();
     d3d->Release();
 
     return (int)msg.wParam;
 }
+
+// shader.fx
+
+// Структура вершинного шейдера
+struct VS_OUTPUT {
+    float4 Position : POSITION;
+    float2 TexCoord : TEXCOORD0;
+};
+
+// Вершинный шейдер
+VS_OUTPUT VS(float4 Position : POSITION, float2 TexCoord : TEXCOORD0) {
+    VS_OUTPUT output;
+    output.Position = Position;
+    output.TexCoord = TexCoord;
+    return output;
+}
+
+// Пиксельный шейдер
+float4 PS(VS_OUTPUT input) : COLOR {
+    return tex2D(TextureSampler, input.TexCoord);
+}
+
+// Техника
+technique DefaultTechnique {
+    pass P0 {
+        VertexShader = compile vs_2_0 VS();
+        PixelShader = compile ps_2_0 PS();
+    }
+}
+
+// Объявление текстуры и сэмплера
+texture Texture;
+
+sampler TextureSampler = sampler_state {
+    Texture = <Texture>;
+    MinFilter = Linear;
+    MagFilter = Linear;
+    MipFilter = Linear;
+    AddressU = Wrap;
+    AddressV = Wrap;
+};
 */
 
 #include "Mesh.h"
