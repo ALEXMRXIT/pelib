@@ -14,10 +14,14 @@
 
 typedef struct {
     float x, y, z;
+    float u, v;
+    float nx, ny, nz;
 } Vertex;
 
 typedef struct {
     int v[3];
+    int t[3];
+    int n[3];
 } Face;
 
 typedef struct _model {
@@ -25,10 +29,12 @@ typedef struct _model {
     Face* faces;
     int vertex_count;
     int face_count;
-    int textureCount;
+    int texture_count;
     uint8** textures;
     uint8* fileName;
     uint8* root;
+    float* texcoords;
+    float* normals;
 } Model;
 
 ALLOCATOR Model* load_obj(const char* filename);

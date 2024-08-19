@@ -10,22 +10,27 @@
 
 #define CHUNK 16384
 
-ALLOCATOR Model* load_obj(const char* filename) {
+Model* load_obj(const char* filename) {
     Model* model = (Model*)malloc(sizeof(Model));
     if (!model) return NULL;
+
     model->vertex_count = 0;
     model->face_count = 0;
+    model->texture_count = 0;
     model->textures = NULL;
-    model->root = NULL;
     model->fileName = NULL;
+    model->root = NULL;
+    model->texcoords = NULL;
+    model->normals = NULL;
 
     FILE* file = fopen(filename, "r");
     if (!file) {
         perror("Failed to open file");
+        free(model);
         return NULL;
     }
 
-    char line[128];
+    char line[256];
     while (fgets(line, sizeof(line), file)) {
         if (line[0] == 'v' && line[1] == ' ')
             model->vertex_count++;
@@ -35,13 +40,16 @@ ALLOCATOR Model* load_obj(const char* filename) {
 
     model->vertices = (Vertex*)malloc(model->vertex_count * sizeof(Vertex));
     model->faces = (Face*)malloc(model->face_count * sizeof(Face));
+    model->texcoords = (float*)malloc(model->vertex_count * 2 * sizeof(float));
+    model->normals = (float*)malloc(model->vertex_count * 3 * sizeof(float));
 
-    if (!model->vertices) {
+    if (!model->vertices || !model->faces || !model->texcoords || !model->normals) {
+        free(model->vertices);
+        free(model->faces);
+        free(model->texcoords);
+        free(model->normals);
         free(model);
-        return NULL;
-    }
-    if (!model->faces) {
-        free(model);
+        fclose(file);
         return NULL;
     }
 
@@ -49,14 +57,27 @@ ALLOCATOR Model* load_obj(const char* filename) {
 
     int vertex_index = 0;
     int face_index = 0;
+    int texcoord_index = 0;
+    int normal_index = 0;
 
     while (fgets(line, sizeof(line), file)) {
         if (line[0] == 'v' && line[1] == ' ') {
             sscanf(line, "v %f %f %f", &model->vertices[vertex_index].x, &model->vertices[vertex_index].y, &model->vertices[vertex_index].z);
             vertex_index++;
         }
+        else if (line[0] == 'v' && line[1] == 't') {
+            sscanf(line, "vt %f %f", &model->texcoords[texcoord_index], &model->texcoords[texcoord_index + 1]);
+            texcoord_index += 2;
+        }
+        else if (line[0] == 'v' && line[1] == 'n') {
+            sscanf(line, "vn %f %f %f", &model->normals[normal_index], &model->normals[normal_index + 1], &model->normals[normal_index + 2]);
+            normal_index += 3;
+        }
         else if (line[0] == 'f' && line[1] == ' ') {
-            sscanf(line, "f %d %d %d", &model->faces[face_index].v[0], &model->faces[face_index].v[1], &model->faces[face_index].v[2]);
+            sscanf(line, "f %d/%d/%d %d/%d/%d %d/%d/%d",
+                &model->faces[face_index].v[0], &model->faces[face_index].t[0], &model->faces[face_index].n[0],
+                &model->faces[face_index].v[1], &model->faces[face_index].t[1], &model->faces[face_index].n[1],
+                &model->faces[face_index].v[2], &model->faces[face_index].t[2], &model->faces[face_index].n[2]);
             face_index++;
         }
     }
@@ -76,10 +97,14 @@ int save_model_binary(const char* filename, Model* model) {
     fwrite(model->vertices, sizeof(Vertex), model->vertex_count, file);
     fwrite(&model->face_count, sizeof(int), 1, file);
     fwrite(model->faces, sizeof(Face), model->face_count, file);
-    fwrite(&model->textureCount, sizeof(int), 1, file);
+    fwrite(&model->texture_count, sizeof(int), 1, file);
 
-    for (int i = 0; i < model->textureCount; i++) {
-        int texture_length = strlen(model->textures[i]) + 1;
+    fwrite(model->texcoords, sizeof(float), model->vertex_count * 2, file);
+
+    fwrite(model->normals, sizeof(float), model->vertex_count * 3, file);
+
+    for (int i = 0; i < model->texture_count; i++) {
+        int texture_length = strlen((char*)model->textures[i]) + 1;
         fwrite(&texture_length, sizeof(int), 1, file);
         fwrite(model->textures[i], sizeof(uint8), texture_length, file);
     }
