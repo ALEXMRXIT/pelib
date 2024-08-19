@@ -37,12 +37,14 @@ typedef struct _model {
     float* normals;
 } Model;
 
-ALLOCATOR Model* load_obj(const char* filename);
-int save_model_binary(const char* filename, Model* model);
-void load_model(Model** models, LPQFileInfo* pLpqFileInfo, int countFiles);
-int compress_file(const char* input_file, const char* output_bhl, const char* output_lpq, const char* file_name);
-void save_model(const Model* model);
-void debug_model(const Model* model);
-void delete_model(Model* model);
+LPQ_API ALLOCATOR Model* load_obj(const char* filename);
+LPQ_API int save_model_binary(const char* filename, Model* model);
+LPQ_API void load_model(Model** models, LPQFileInfo* pLpqFileInfo, int countFiles);
+LPQ_API int compress_file(const char* input_file, const char* output_bhl, const char* output_lpq, const char* file_name);
+LPQ_API void save_model(const Model* model);
+LPQ_API void debug_model(const Model* model);
+LPQ_API void delete_model(Model* model);
+LPQ_API void lpq_load_header(BHLFileEnty** pBhlFileEntry);
+LPQ_API Model* lpq_extract_file_model(const char* filename);
 
 #endif

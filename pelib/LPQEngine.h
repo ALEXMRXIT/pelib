@@ -49,6 +49,14 @@ extern "C" {
 		LPQBuilder* pLpqBuilder;
 	} LPQEngine;
 
+	typedef struct _lpqbhlEntry {
+		uint32 hash;
+		uint64 original_size;
+		uint64 compressed_size;
+		uint64 start_position;
+		enum fily_type fileType;
+	} BHLFileEnty;
+
 	LPQ_API ALLOCATOR LPQEngine* CreateEngine();
 	LPQ_API void AnalizeTreeFiles(LPQBuilder** pBuilder, const char* path);
 	LPQ_API void delete_engine(LPQEngine** ppEngine);

@@ -9,6 +9,9 @@
     <ClCompile Include="LPQEngine.c">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="Mesh.c">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LPQEngine.h">
@@ -18,6 +21,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="Stack.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh.h">
       <Filter>src</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,315 +1,3 @@
-/*
-#include <windows.h>
-#include <d3d9.h>
-#include <d3dx9.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#pragma comment(lib, "d3d9.lib")
-#pragma comment(lib, "d3dx9.lib")
-
-// Предположим, что структура Model и функция load_obj уже определены
-
-typedef struct {
-    IDirect3DVertexBuffer9* vertexBuffer;
-    IDirect3DIndexBuffer9* indexBuffer;
-    int vertexCount;
-    int faceCount;
-    IDirect3DTexture9* texture;
-} RenderableModel;
-
-RenderableModel* CreateRenderableModel(IDirect3DDevice9* device, Model* model, const char* textureFile) {
-    if (!device || !model) return NULL;
-
-    RenderableModel* renderableModel = (RenderableModel*)malloc(sizeof(RenderableModel));
-    if (!renderableModel) return NULL;
-
-    renderableModel->vertexCount = model->vertex_count;
-    renderableModel->faceCount = model->face_count;
-
-    // Создание вершинного буфера
-    device->CreateVertexBuffer(
-        model->vertex_count * sizeof(Vertex),
-        D3DUSAGE_WRITEONLY,
-        D3DFVF_XYZ | D3DFVF_TEX1 | D3DFVF_NORMAL,
-        D3DPOOL_DEFAULT,
-        &renderableModel->vertexBuffer,
-        NULL
-    );
-
-    // Заполнение вершинного буфера
-    void* vertices;
-    renderableModel->vertexBuffer->Lock(0, model->vertex_count * sizeof(Vertex), &vertices, 0);
-    memcpy(vertices, model->vertices, model->vertex_count * sizeof(Vertex));
-    renderableModel->vertexBuffer->Unlock();
-
-    // Создание индексного буфера
-    device->CreateIndexBuffer(
-        model->face_count * 3 * sizeof(int),
-        D3DUSAGE_WRITEONLY,
-        D3DFMT_INDEX32,
-        D3DPOOL_DEFAULT,
-        &renderableModel->indexBuffer,
-        NULL
-    );
-
-    // Заполнение индексного буфера
-    void* indices;
-    renderableModel->indexBuffer->Lock(0, model->face_count * 3 * sizeof(int), &indices, 0);
-    int* indicesPtr = (int*)indices;
-    for (int i = 0; i < model->face_count; i++) {
-        indicesPtr[i * 3 + 0] = model->faces[i].v[0] - 1;
-        indicesPtr[i * 3 + 1] = model->faces[i].v[1] - 1;
-        indicesPtr[i * 3 + 2] = model->faces[i].v[2] - 1;
-    }
-    renderableModel->indexBuffer->Unlock();
-
-    // Загрузка текстуры
-    if (FAILED(D3DXCreateTextureFromFile(device, textureFile, &renderableModel->texture))) {
-        MessageBox(NULL, "Failed to load texture", "Error!", MB_ICONEXCLAMATION | MB_OK);
-        DestroyRenderableModel(renderableModel);
-        return NULL;
-    }
-
-    return renderableModel;
-}
-
-void RenderModel(IDirect3DDevice9* device, RenderableModel* renderableModel) {
-    if (!device || !renderableModel) return;
-
-    // Установка буферов
-    device->SetStreamSource(0, renderableModel->vertexBuffer, 0, sizeof(Vertex));
-    device->SetIndices(renderableModel->indexBuffer);
-    device->SetFVF(D3DFVF_XYZ | D3DFVF_TEX1 | D3DFVF_NORMAL);
-
-    // Установка текстуры
-    device->SetTexture(0, renderableModel->texture);
-
-    // Отрисовка модели
-    device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, renderableModel->vertexCount, 0, renderableModel->faceCount);
-}
-
-void DestroyRenderableModel(RenderableModel* renderableModel) {
-    if (renderableModel) {
-        if (renderableModel->vertexBuffer) renderableModel->vertexBuffer->Release();
-        if (renderableModel->indexBuffer) renderableModel->indexBuffer->Release();
-        if (renderableModel->texture) renderableModel->texture->Release();
-        free(renderableModel);
-    }
-}
-
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        break;
-    default:
-        return DefWindowProc(hwnd, msg, wParam, lParam);
-    }
-    return 0;
-}
-
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // Регистрация класса окна
-    WNDCLASSEX wc;
-    ZeroMemory(&wc, sizeof(wc));
-    wc.cbSize = sizeof(WNDCLASSEX);
-    wc.style = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = hInstance;
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.lpszClassName = "WindowClass";
-
-    if (!RegisterClassEx(&wc)) {
-        MessageBox(NULL, "Window Registration Failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-        return 0;
-    }
-
-    // Создание окна
-    HWND hwnd = CreateWindowEx(
-        0,
-        "WindowClass",
-        "DirectX9 OBJ Loader",
-        WS_EX_TOPMOST | WS_POPUP,
-        0, 0, 800, 600,
-        NULL, NULL, hInstance, NULL
-    );
-
-    if (hwnd == NULL) {
-        MessageBox(NULL, "Window Creation Failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-        return 0;
-    }
-
-    ShowWindow(hwnd, nCmdShow);
-    UpdateWindow(hwnd);
-
-    // Инициализация Direct3D
-    IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
-    if (!d3d) {
-        MessageBox(NULL, "Failed to create Direct3D interface", "Error!", MB_ICONEXCLAMATION | MB_OK);
-        return 0;
-    }
-
-    D3DPRESENT_PARAMETERS d3dpp;
-    ZeroMemory(&d3dpp, sizeof(d3dpp));
-    d3dpp.Windowed = FALSE;
-    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-    d3dpp.hDeviceWindow = hwnd;
-    d3dpp.BackBufferWidth = 800;
-    d3dpp.BackBufferHeight = 600;
-    d3dpp.BackBufferFormat = D3DFMT_X8R8G8B8;
-    d3dpp.FullScreen_RefreshRateInHz = D3DPRESENT_RATE_DEFAULT;
-    d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
-
-    IDirect3DDevice9* device;
-    if (FAILED(d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &device))) {
-        MessageBox(NULL, "Failed to create Direct3D device", "Error!", MB_ICONEXCLAMATION | MB_OK);
-        d3d->Release();
-        return 0;
-    }
-
-    // Загрузка шейдера
-    ID3DXEffect* effect;
-    ID3DXBuffer* errorBuffer = NULL;
-    if (FAILED(D3DXCreateEffectFromFile(device, "shader.fx", NULL, NULL, 0, NULL, &effect, &errorBuffer))) {
-        if (errorBuffer) {
-            MessageBox(NULL, (char*)errorBuffer->GetBufferPointer(), "Shader Error", MB_OK);
-            errorBuffer->Release();
-        }
-        MessageBox(NULL, "Failed to create effect", "Error!", MB_ICONEXCLAMATION | MB_OK);
-        device->Release();
-        d3d->Release();
-        return 0;
-    }
-
-    // Загрузка моделей
-    const char* modelFiles[] = { "model1.obj", "model2.obj", "model3.obj" };
-    const char* textureFiles[] = { "texture1.png", "texture2.png", "texture3.png" };
-    int modelCount = sizeof(modelFiles) / sizeof(modelFiles[0]);
-    RenderableModel** renderableModels = (RenderableModel**)malloc(modelCount * sizeof(RenderableModel*));
-
-    for (int i = 0; i < modelCount; i++) {
-        Model* model = load_obj(modelFiles[i]);
-        if (!model) {
-            MessageBox(NULL, "Failed to load model", "Error!", MB_ICONEXCLAMATION | MB_OK);
-            for (int j = 0; j < i; j++) {
-                DestroyRenderableModel(renderableModels[j]);
-            }
-            free(renderableModels);
-            effect->Release();
-            device->Release();
-            d3d->Release();
-            return 0;
-        }
-
-        renderableModels[i] = CreateRenderableModel(device, model, textureFiles[i]);
-        if (!renderableModels[i]) {
-            MessageBox(NULL, "Failed to create renderable model", "Error!", MB_ICONEXCLAMATION | MB_OK);
-            for (int j = 0; j < i; j++) {
-                DestroyRenderableModel(renderableModels[j]);
-            }
-            free(renderableModels);
-            effect->Release();
-            device->Release();
-            d3d->Release();
-            return 0;
-        }
-
-        free(model->vertices);
-        free(model->faces);
-        free(model);
-    }
-
-    // Основной цикл рендеринга
-    MSG msg;
-    ZeroMemory(&msg, sizeof(msg));
-    while (msg.message != WM_QUIT) {
-        if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        } else {
-            // Очистка экрана
-            device->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
-            device->BeginScene();
-
-            // Установка шейдера
-            effect->SetTechnique("DefaultTechnique");
-            UINT numPasses;
-            effect->Begin(&numPasses, 0);
-
-            for (UINT pass = 0; pass < numPasses; pass++) {
-                effect->BeginPass(pass);
-
-                // Отрисовка моделей
-                for (int i = 0; i < modelCount; i++) {
-                    RenderModel(device, renderableModels[i]);
-                }
-
-                effect->EndPass();
-            }
-            effect->End();
-
-            device->EndScene();
-            device->Present(NULL, NULL, NULL, NULL);
-        }
-    }
-
-    // Освобождение ресурсов
-    for (int i = 0; i < modelCount; i++) {
-        DestroyRenderableModel(renderableModels[i]);
-    }
-    free(renderableModels);
-    effect->Release();
-    device->Release();
-    d3d->Release();
-
-    return (int)msg.wParam;
-}
-
-// shader.fx
-
-// Структура вершинного шейдера
-struct VS_OUTPUT {
-    float4 Position : POSITION;
-    float2 TexCoord : TEXCOORD0;
-};
-
-// Вершинный шейдер
-VS_OUTPUT VS(float4 Position : POSITION, float2 TexCoord : TEXCOORD0) {
-    VS_OUTPUT output;
-    output.Position = Position;
-    output.TexCoord = TexCoord;
-    return output;
-}
-
-// Пиксельный шейдер
-float4 PS(VS_OUTPUT input) : COLOR {
-    return tex2D(TextureSampler, input.TexCoord);
-}
-
-// Техника
-technique DefaultTechnique {
-    pass P0 {
-        VertexShader = compile vs_2_0 VS();
-        PixelShader = compile ps_2_0 PS();
-    }
-}
-
-// Объявление текстуры и сэмплера
-texture Texture;
-
-sampler TextureSampler = sampler_state {
-    Texture = <Texture>;
-    MinFilter = Linear;
-    MagFilter = Linear;
-    MipFilter = Linear;
-    AddressU = Wrap;
-    AddressV = Wrap;
-};
-*/
-
 #include "Mesh.h"
 #include "Path.h"
 
@@ -439,7 +127,7 @@ void load_model(Model** models, const LPQFileInfo* pLpqFileInfo, int countFiles)
 
             char modelName[64];
             strip_path_and_extension((char*)file, modelName, sizeof(modelName));
-            model->textureCount = 0;
+            model->texture_count = 0;
             for (int i = 0; i < countFiles; ++i) {
                 file = pLpqFileInfo->pFileAdditionaly[i].pFileName;
                 length = strlen((char*)file);
@@ -448,20 +136,20 @@ void load_model(Model** models, const LPQFileInfo* pLpqFileInfo, int countFiles)
                     strip_path_and_extension((char*)file, textureName, sizeof(textureName));
                     size_t len = strlen(modelName);
                     if (strncmp(modelName, textureName, len) == 0) {
-                        model->textures = (uint8**)realloc(model->textures, (model->textureCount + 1) * sizeof(uint8*));
+                        model->textures = (uint8**)realloc(model->textures, (model->texture_count + 1) * sizeof(uint8*));
                         if (!model->textures) {
                             perror("Failed to reallocate memory for textures");
                             return;
                         }
 
-                        model->textures[model->textureCount] = (uint8*)malloc((strlen(textureName) + 1) * sizeof(uint8));
-                        if (!model->textures[model->textureCount]) {
+                        model->textures[model->texture_count] = (uint8*)malloc((strlen(textureName) + 1) * sizeof(uint8));
+                        if (!model->textures[model->texture_count]) {
                             perror("Failed to allocate memory for texture name");
                             return;
                         }
 
-                        strcpy((char*)model->textures[model->textureCount], textureName);
-                        model->textureCount++;
+                        strcpy((char*)model->textures[model->texture_count], textureName);
+                        model->texture_count++;
                     }
                 }
             }
@@ -588,7 +276,7 @@ void save_model(const Model* model) {
         char* root = getRootPath(model->root);
         snprintf(output_bhl, sizeof(output_bhl), "%s\\mesh.bhl", root);
         snprintf(output_lpq, sizeof(output_lpq), "%s\\mesh.lpq", root);
-        int total_files = model->textureCount + 1;
+        int total_files = model->texture_count + 1;
 
         FILE* bhl_file = fopen(output_bhl, "rb+");
         if (!bhl_file) {
@@ -614,7 +302,7 @@ void save_model(const Model* model) {
         else
             printf("Model compressed and saved to %s and %s\n", output_bhl, output_lpq);
 
-        for (int i = 0; i < model->textureCount; ++i) {
+        for (int i = 0; i < model->texture_count; ++i) {
             char texture_filename[256];
             snprintf(texture_filename, sizeof(texture_filename), "%s\\%s.png", model->root, model->textures[i]);
             save_texture(texture_filename, output_bhl, output_lpq, texture_filename);
@@ -626,18 +314,32 @@ void save_model(const Model* model) {
 }
 
 void debug_model(const Model* model) {
-    printf("Model: %d vertices, %d faces, %d textures\n", model->vertex_count, model->face_count, model->textureCount);
-    for (int j = 0; j < model->textureCount; ++j)
+    printf("Model: %d vertices, %d faces, %d textures\n", model->vertex_count, model->face_count, model->texture_count);
+    for (int j = 0; j < model->texture_count; ++j)
         printf("|--Texture %d: %s\n", j, model->textures[j]);
+
+    printf("|--Texcoords: %p\n", (void*)model->texcoords);
+    printf("|--Normals: %p\n", (void*)model->normals);
 }
 
 void delete_model(Model* model) {
     free(model->vertices);
     free(model->faces);
-    for (int j = 0; j < model->textureCount; j++)
+    for (int j = 0; j < model->texture_count; j++)
         free(model->textures[j]);
     free(model->textures);
     free(model->fileName);
     free(model->root);
+    free(model->texcoords);
+    free(model->normals);
     free(model);
+}
+
+void lpq_load_header(BHLFileEnty** pBhlFileEntry) {
+
+}
+
+Model* lpq_extract_file_model(const char* filename) {
+
+    return NULL;
 }
