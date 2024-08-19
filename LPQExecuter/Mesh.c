@@ -1,3 +1,214 @@
+/*
+#include <windows.h>
+#include <d3d9.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#pragma comment(lib, "d3d9.lib")
+
+// Предположим, что структура Model и функция load_obj уже определены
+
+typedef struct {
+    IDirect3DVertexBuffer9* vertexBuffer;
+    IDirect3DIndexBuffer9* indexBuffer;
+    int vertexCount;
+    int faceCount;
+} RenderableModel;
+
+RenderableModel* CreateRenderableModel(IDirect3DDevice9* device, Model* model) {
+    if (!device || !model) return NULL;
+
+    RenderableModel* renderableModel = (RenderableModel*)malloc(sizeof(RenderableModel));
+    if (!renderableModel) return NULL;
+
+    renderableModel->vertexCount = model->vertex_count;
+    renderableModel->faceCount = model->face_count;
+
+    // Создание вершинного буфера
+    device->CreateVertexBuffer(
+        model->vertex_count * sizeof(Vertex),
+        D3DUSAGE_WRITEONLY,
+        D3DFVF_XYZ | D3DFVF_TEX1 | D3DFVF_NORMAL,
+        D3DPOOL_DEFAULT,
+        &renderableModel->vertexBuffer,
+        NULL
+    );
+
+    // Заполнение вершинного буфера
+    void* vertices;
+    renderableModel->vertexBuffer->Lock(0, model->vertex_count * sizeof(Vertex), &vertices, 0);
+    memcpy(vertices, model->vertices, model->vertex_count * sizeof(Vertex));
+    renderableModel->vertexBuffer->Unlock();
+
+    // Создание индексного буфера
+    device->CreateIndexBuffer(
+        model->face_count * 3 * sizeof(int),
+        D3DUSAGE_WRITEONLY,
+        D3DFMT_INDEX32,
+        D3DPOOL_DEFAULT,
+        &renderableModel->indexBuffer,
+        NULL
+    );
+
+    // Заполнение индексного буфера
+    void* indices;
+    renderableModel->indexBuffer->Lock(0, model->face_count * 3 * sizeof(int), &indices, 0);
+    int* indicesPtr = (int*)indices;
+    for (int i = 0; i < model->face_count; i++) {
+        indicesPtr[i * 3 + 0] = model->faces[i].v[0] - 1;
+        indicesPtr[i * 3 + 1] = model->faces[i].v[1] - 1;
+        indicesPtr[i * 3 + 2] = model->faces[i].v[2] - 1;
+    }
+    renderableModel->indexBuffer->Unlock();
+
+    return renderableModel;
+}
+
+void RenderModel(IDirect3DDevice9* device, RenderableModel* renderableModel) {
+    if (!device || !renderableModel) return;
+
+    // Установка буферов
+    device->SetStreamSource(0, renderableModel->vertexBuffer, 0, sizeof(Vertex));
+    device->SetIndices(renderableModel->indexBuffer);
+    device->SetFVF(D3DFVF_XYZ | D3DFVF_TEX1 | D3DFVF_NORMAL);
+
+    // Отрисовка модели
+    device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, renderableModel->vertexCount, 0, renderableModel->faceCount);
+}
+
+void DestroyRenderableModel(RenderableModel* renderableModel) {
+    if (renderableModel) {
+        if (renderableModel->vertexBuffer) renderableModel->vertexBuffer->Release();
+        if (renderableModel->indexBuffer) renderableModel->indexBuffer->Release();
+        free(renderableModel);
+    }
+}
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+    default:
+        return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+    return 0;
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // Регистрация класса окна
+    WNDCLASSEX wc;
+    ZeroMemory(&wc, sizeof(wc));
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.lpszClassName = "WindowClass";
+
+    if (!RegisterClassEx(&wc)) {
+        MessageBox(NULL, "Window Registration Failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        return 0;
+    }
+
+    // Создание окна
+    HWND hwnd = CreateWindowEx(
+        0,
+        "WindowClass",
+        "DirectX9 OBJ Loader",
+        WS_EX_TOPMOST | WS_POPUP,
+        0, 0, 800, 600,
+        NULL, NULL, hInstance, NULL
+    );
+
+    if (hwnd == NULL) {
+        MessageBox(NULL, "Window Creation Failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        return 0;
+    }
+
+    ShowWindow(hwnd, nCmdShow);
+    UpdateWindow(hwnd);
+
+    // Инициализация Direct3D
+    IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    if (!d3d) {
+        MessageBox(NULL, "Failed to create Direct3D interface", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        return 0;
+    }
+
+    D3DPRESENT_PARAMETERS d3dpp;
+    ZeroMemory(&d3dpp, sizeof(d3dpp));
+    d3dpp.Windowed = FALSE;
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.hDeviceWindow = hwnd;
+    d3dpp.BackBufferWidth = 800;
+    d3dpp.BackBufferHeight = 600;
+    d3dpp.BackBufferFormat = D3DFMT_X8R8G8B8;
+    d3dpp.FullScreen_RefreshRateInHz = D3DPRESENT_RATE_DEFAULT;
+    d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+
+    IDirect3DDevice9* device;
+    if (FAILED(d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &device))) {
+        MessageBox(NULL, "Failed to create Direct3D device", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        d3d->Release();
+        return 0;
+    }
+
+    // Загрузка модели
+    Model* model = load_obj("model.obj");
+    if (!model) {
+        MessageBox(NULL, "Failed to load model", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        device->Release();
+        d3d->Release();
+        return 0;
+    }
+
+    // Создание рендеребл модели
+    RenderableModel* renderableModel = CreateRenderableModel(device, model);
+    if (!renderableModel) {
+        MessageBox(NULL, "Failed to create renderable model", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        free(model->vertices);
+        free(model->faces);
+        free(model);
+        device->Release();
+        d3d->Release();
+        return 0;
+    }
+
+    // Основной цикл рендеринга
+    MSG msg;
+    ZeroMemory(&msg, sizeof(msg));
+    while (msg.message != WM_QUIT) {
+        if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        } else {
+            // Очистка экрана
+            device->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
+            device->BeginScene();
+
+            // Отрисовка модели
+            RenderModel(device, renderableModel);
+
+            device->EndScene();
+            device->Present(NULL, NULL, NULL, NULL);
+        }
+    }
+
+    // Освобождение ресурсов
+    DestroyRenderableModel(renderableModel);
+    free(model->vertices);
+    free(model->faces);
+    free(model);
+    device->Release();
+    d3d->Release();
+
+    return (int)msg.wParam;
+}
+*/
+
 #include "Mesh.h"
 #include "Path.h"
 
